@@ -1,0 +1,10 @@
+{
+  "name": "findit",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "api": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build"
+  }
+}
