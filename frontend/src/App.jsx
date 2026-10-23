@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "./components/Icon.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import RegisterPage from "./components/RegisterPage.jsx";
+import ForgotPasswordPage from "./components/ForgotPasswordPage.jsx";
+import ResetPasswordPage from "./components/ResetPasswordPage.jsx";
+import ProfileModal from "./components/ProfileModal.jsx";
+import AdminDashboard from "./components/AdminDashboard.jsx";
+import listingsApi from "./api/listings.js";
+import authApi from "./api/auth.js";
 import ListingCard from "./components/ListingCard.jsx";
 import ReportModal from "./components/ReportModal.jsx";
 import ItemDetailModal from "./components/ItemDetailModal.jsx";
@@ -19,8 +25,28 @@ function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [page, setPage] = useState("home");
+  const resetParams = new URLSearchParams(window.location.search);
+  const resetToken = resetParams.get("resetToken") || "";
+  const resetEmail = resetParams.get("email") || "";
+  const [page, setPage] = useState(() => (resetToken ? "reset" : "login"));
+  const [currentUser, setCurrentUser] = useState(null);
+  const [emailForLogin, setEmailForLogin] = useState("");
+  const [showProfile, setShowProfile] = useState(false);
 
+  useEffect(() => {
+    if (resetToken) return;
+    authApi.currentUser().then((user) => {
+      setCurrentUser(user);
+      authApi.savedIds().then((ids) => setSaved(ids)).catch(() => {});
+      setPage("home");
+    }).catch(() => {});
+  }, [resetToken]);
+
+  useEffect(() => {
+    listingsApi.all().then((savedListings) => {
+      setItems([...savedListings, ...initialItems]);
+    }).catch(() => {});
+  }, []);
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedLocation = location.trim().toLowerCase();
   const filteredItems = [];
@@ -47,34 +73,70 @@ function App() {
     window.setTimeout(() => setToast(""), 3000);
   }
 
+  async function completeSignIn(email, password) {
+    const result = await authApi.login(email, password);
+    setCurrentUser(result.user);
+    authApi.savedIds().then((ids) => setSaved(ids)).catch(() => {});
+    setPage("home");
+    showToast("Signed in successfully.");
+  }
+
+  async function createAccount(account) {
+    await authApi.register(account);
+    setEmailForLogin(account.email);
+    setPage("login");
+    showToast("Account created. Sign in with your new password.");
+  }
+
+  async function signOut() {
+    await authApi.logout().catch(() => {});
+    setCurrentUser(null);
+    setShowProfile(false);
+    setPage("login");
+  }
+
   function scrollToListings() {
     document.getElementById("listings")?.scrollIntoView({ behavior: "smooth" });
   }
 
   function toggleSaved(itemId) {
-    if (saved.includes(itemId)) {
-      setSaved(saved.filter((savedId) => savedId !== itemId));
-    } else {
-      setSaved([...saved, itemId]);
-    }
+    const itemKey = String(itemId);
+    const nextSaved = saved.includes(itemKey)
+      ? saved.filter((savedId) => savedId !== itemKey)
+      : [...saved, itemKey];
+    setSaved(nextSaved);
+    authApi.updateSavedIds(nextSaved).catch((error) => {
+      setSaved(saved);
+      showToast(error.message);
+    });
   }
 
-  function addListing(newItem) {
-    setItems([newItem, ...items]);
-    setKind("All");
-    setCategory("All items");
-    setModal(null);
-    scrollToListings();
-    showToast("Your listing has been added.");
+  async function addListing(newItem) {
+    try {
+      const savedListing = await listingsApi.create(newItem);
+      setItems((currentItems) => [savedListing, ...currentItems]);
+      setKind("All");
+      setCategory("All items");
+      setModal(null);
+      scrollToListings();
+      showToast("Your listing has been saved to the campus board.");
+    } catch (error) {
+      showToast(error.message);
+    }
   }
 
   if (page === "login") {
     return (
       <div className="app-shell">
         <LoginPage
-          onBack={() => setPage("home")}
+          initialEmail={emailForLogin}
+          onBack={() => showToast("Please sign in to continue.")}
           onRegister={() => setPage("register")}
-          onSubmit={showToast}
+          onForgot={(email) => {
+            setEmailForLogin(email || "");
+            setPage("forgot");
+          }}
+          onSubmit={completeSignIn}
         />
         {toast && <Toast message={toast} />}
       </div>
@@ -85,13 +147,47 @@ function App() {
     return (
       <div className="app-shell">
         <RegisterPage
-          onBack={() => setPage("home")}
+          onBack={() => setPage("login")}
           onLogin={() => setPage("login")}
-          onSubmit={showToast}
+          onSubmit={createAccount}
         />
         {toast && <Toast message={toast} />}
       </div>
     );
+  }
+
+  if (page === "forgot") {
+    return (
+      <div className="app-shell">
+        <ForgotPasswordPage onBack={() => setPage("login")} initialEmail={emailForLogin} />
+      </div>
+    );
+  }
+
+  if (page === "reset") {
+    return (
+      <div className="app-shell">
+        <ResetPasswordPage
+          token={resetToken}
+          email={resetEmail}
+          onBack={() => setPage("login")}
+          onComplete={() => {
+            window.history.replaceState({}, "", window.location.pathname);
+            setEmailForLogin(resetEmail);
+            setPage("login");
+            showToast("Password updated. Sign in with your new password.");
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (page === "admin" && currentUser?.role === "admin") {
+    return <AdminDashboard user={currentUser} onBack={() => { listingsApi.all().then((savedListings) => setItems([...savedListings, ...initialItems])).catch(() => {}); setPage("home"); }} />;
+  }
+
+  if (page === "admin") {
+    return <main className="auth-page"><section className="auth-card"><h1>Admin access required</h1><p className="auth-description">Sign in with an administrator account to open this section.</p><button className="button button-primary auth-submit" onClick={() => setPage("login")}>Return to sign in</button></section></main>;
   }
 
   return (
@@ -123,17 +219,19 @@ function App() {
           <a href="#safety" onClick={() => setMobileMenu(false)}>
             Safety
           </a>
-          <button
-            className="button button-quiet nav-login"
-            onClick={() => setPage("login")}
-          >
-            Sign in
+          {currentUser?.role === "admin" && (
+            <button className="button button-quiet nav-login" onClick={() => setPage("admin")}>
+              Admin desk
+            </button>
+          )}
+          <button className="button button-quiet nav-login" onClick={signOut}>
+            Sign out
           </button>
           <button
             className="button button-primary nav-report"
-            onClick={() => setPage("register")}
+            onClick={() => setShowProfile(true)}
           >
-            Join your campus
+            My account
           </button>
         </nav>
       </header>
@@ -357,7 +455,7 @@ function App() {
               <ListingCard
                 key={item.id}
                 item={item}
-                isSaved={saved.includes(item.id)}
+                isSaved={saved.some((savedId) => String(savedId) === String(item.id))}
                 onSave={toggleSaved}
                 onOpen={(selectedItem) =>
                   setModal({ type: "detail", item: selectedItem })
@@ -531,12 +629,22 @@ function App() {
         <ItemDetailModal
           item={modal.item}
           onClose={() => setModal(null)}
-          onContact={() => {
-            setModal(null);
-            showToast(
-              "Contact and messaging will be available when account services are connected.",
-            );
+          onContact={() => listingsApi.contact(modal.item.id)}
+        />
+      )}
+      {showProfile && currentUser && (
+        <ProfileModal
+          user={currentUser}
+          onClose={() => setShowProfile(false)}
+          onSignOut={signOut}
+          onSaveProfile={async (profile) => {
+            const result = await authApi.updateProfile(profile);
+            setCurrentUser(result.user);
+            return result.user;
           }}
+          onChangePassword={(currentPassword, newPassword) =>
+            authApi.changePassword({ currentPassword, newPassword })
+          }
         />
       )}
       {toast && <Toast message={toast} />}
@@ -565,3 +673,8 @@ function Toast({ message }) {
 }
 
 export default App;
+
+
+
+
+
