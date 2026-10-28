@@ -635,6 +635,15 @@ function App() {
       {showProfile && currentUser && (
         <ProfileModal
           user={currentUser}
+          savedItems={items.filter((item) =>
+            saved.some((savedId) => String(savedId) === String(item.id)),
+          )}
+          onBrowse={() => { setShowProfile(false); scrollToListings(); }}
+          onOpenSavedItem={(item) => {
+            setShowProfile(false);
+            setModal({ type: "detail", item });
+          }}
+          onRemoveSaved={toggleSaved}
           onClose={() => setShowProfile(false)}
           onSignOut={signOut}
           onSaveProfile={async (profile) => {

@@ -26,6 +26,7 @@ const authApi = {
   updateProfile: (profile) => send('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(profile) }),
   changePassword: (data) => send('/api/auth/password', { method: 'PATCH', body: JSON.stringify(data) }),
   myListings: () => send('/api/auth/my-listings').then((result) => result.listings),
+  updateMyListingStatus: (id, status) => send('/api/auth/my-listings/' + id + '/status', { method: 'PATCH', body: JSON.stringify({ status }) }).then((result) => result.listing),
   savedIds: () => send('/api/auth/saved').then((result) => result.listingIds),
   updateSavedIds: (listingIds) => send('/api/auth/saved', { method: 'PUT', body: JSON.stringify({ listingIds }) }),
   logout: () => post('/api/auth/logout'),

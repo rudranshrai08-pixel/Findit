@@ -44,7 +44,7 @@ const listingSchema = new mongoose.Schema({
   emoji: { type: String, default: '📦' },
   color: { type: String, default: 'blue' },
   photo: { type: String, default: '' },
-  status: { type: String, enum: ['active', 'hidden'], default: 'active' },
+  status: { type: String, enum: ['active', 'hidden', 'resolved'], default: 'active' },
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
@@ -244,6 +244,25 @@ app.get('/api/auth/my-listings', async (req, res) => {
   return res.json({ listings: listings.map(publicListing) });
 });
 
+app.patch('/api/auth/my-listings/:id/status', async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const { status } = req.body || {};
+  if (!['active', 'resolved'].includes(status)) {
+    return res.status(400).json({ message: 'Choose active or resolved.' });
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(404).json({ message: 'Listing not found.' });
+  }
+  const listing = await Listing.findOne({ _id: req.params.id, userId: user._id });
+  if (!listing) return res.status(404).json({ message: 'Your listing could not be found.' });
+  if (listing.status === 'hidden') {
+    return res.status(403).json({ message: 'This listing is hidden by an administrator.' });
+  }
+  listing.status = status;
+  await listing.save();
+  return res.json({ listing: publicListing(listing) });
+});
 app.get('/api/auth/saved', async (req, res) => {
   const user = await requireUser(req, res);
   if (user) return res.json({ listingIds: user.savedListingIds || [] });

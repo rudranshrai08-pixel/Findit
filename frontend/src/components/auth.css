@@ -251,3 +251,38 @@
 .account-report i { color:#397250; font-size:8px; font-style:normal; text-transform:capitalize; }
 .account-report i.hidden { color:#a46c40; }
 @media (max-width:540px) { .account-backdrop { padding:12px; } .account-modal { padding:23px 18px 16px; } .account-heading { align-items:flex-start; } .account-tabs button { font-size:9px; } }
+
+.account-tab-count { display:inline-grid; min-width:16px; height:16px; margin-left:4px; padding:0 4px; place-items:center; border-radius:10px; color:#4e765d; background:#e8f1e6; font-size:8px; }
+.saved-items-list { gap:9px; }
+.saved-item { min-height:68px; padding:8px; border-color:#e4ebe3; background:linear-gradient(110deg,#fff 0%,#fbfcfa 100%); transition:border-color .16s, transform .16s, box-shadow .16s; }
+.saved-item:hover { border-color:#c8ddca; transform:translateY(-1px); box-shadow:0 7px 16px #2844320d; }
+.saved-item-main { min-width:0; flex:1; display:flex; align-items:center; gap:10px; border:0; padding:0; background:transparent; text-align:left; cursor:pointer; }
+.saved-item-art { width:48px; height:48px; flex:none; display:grid; place-items:center; overflow:hidden; border-radius:10px; background:linear-gradient(140deg,#f1f5e9,#e4eee5); }
+.saved-item-art img { width:100%; height:100%; object-fit:cover; }
+.saved-item-art > span { font-size:23px; }
+.saved-item-copy { min-width:0; flex:1; display:grid; gap:4px; }
+.saved-item-copy b { color:#354b3e; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.saved-item-copy small { color:#849188; font-size:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.saved-item-type { width:max-content; padding:3px 6px; border-radius:12px; color:#357653; background:#eaf4e9; font-size:8px; font-style:normal; font-weight:700; }
+.saved-item-type.lost { color:#986d3f; background:#f8f0e2; }
+.saved-item-remove { width:32px; height:32px; flex:none; display:grid; place-items:center; border:1px solid #f0e3e0; border-radius:50%; color:#bd716b; background:#fff8f6; cursor:pointer; transition:background .15s, transform .15s; }
+.saved-item-remove:hover { background:#fae9e6; transform:scale(1.04); }
+.saved-item-remove svg { fill:#f1d6d1; }
+.saved-items-empty { gap:9px; }
+.saved-items-empty > span { width:42px; height:42px; display:grid; place-items:center; border-radius:14px 14px 14px 5px; color:#428060; background:#edf5eb; }
+.saved-browse-button { min-height:34px; margin-top:4px; padding:8px 11px; font-size:9px; }
+@media (max-width:540px) {
+  .account-tab-count { min-width:14px; height:14px; font-size:7px; }
+  .saved-item { gap:6px; padding:7px; }
+  .saved-item-art { width:42px; height:42px; }
+  .saved-item-copy small { max-width:165px; }
+}
+.owner-report { flex-wrap:wrap; }
+.owner-report > div { min-width:110px; }
+.account-report i.active { color:#397250; }
+.account-report i.resolved { color:#52715e; }
+.account-report i.hidden { color:#a46c40; }
+.account-report-action { flex:none; border:1px solid #d7e7d7; border-radius:16px; padding:6px 9px; color:#34734e; background:#f4f8f1; font-size:8px; font-weight:700; cursor:pointer; transition:background .15s, transform .15s; }
+.account-report-action:hover:not(:disabled) { background:#e8f3e6; transform:translateY(-1px); }
+.account-report-action:disabled { opacity:.6; cursor:wait; }
+@media (max-width:540px) { .owner-report > div { flex:1; } .account-report-action { margin-left:44px; } }
