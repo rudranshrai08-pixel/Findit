@@ -562,7 +562,7 @@ async function start() {
   } else {
     console.log('MONGODB_URI is not set; account and admin features require MongoDB.');
   }
-  app.listen(port, '127.0.0.1', () => console.log(`FindIt API listening on http://localhost:${port}`));
+  app.listen(port, '0.0.0.0', () => console.log(`FindIt API listening on port ${port}`));
 }
 
 start();
