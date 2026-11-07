@@ -1,11 +1,12 @@
 {
   "name": "findit-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "FindIt Express and MongoDB API",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/api-smoke-test.js",
     "dev": "nodemon src/server.js",
+    "api": "nodemon src/server.js",
     "start": "node src/server.js"
   },
   "keywords": [],

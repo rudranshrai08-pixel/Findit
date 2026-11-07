@@ -47,9 +47,18 @@ const listingSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'hidden', 'resolved'], default: 'active' },
 }, { timestamps: true });
 
+const claimSchema = new mongoose.Schema({
+  listingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Listing', required: true },
+  claimantId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  privateDetails: { type: String, required: true, trim: true, maxlength: 1000 },
+  status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+}, { timestamps: true });
+claimSchema.index({ listingId: 1, claimantId: 1 }, { unique: true });
 const User = mongoose.model('User', userSchema);
 const Session = mongoose.model('Session', sessionSchema);
 const Listing = mongoose.model('Listing', listingSchema);
+const Claim = mongoose.model('Claim', claimSchema);
 
 function hashToken(token) {
   return createHash('sha256').update(token).digest('hex');
@@ -107,6 +116,50 @@ function publicListing(listing) {
   };
 }
 
+const ignoredMatchWords = new Set(['the', 'and', 'for', 'with', 'from', 'this', 'that', 'was', 'were', 'have', 'has', 'near', 'its', 'your', 'our', 'item', 'lost', 'found']);
+function itemTokens(value) {
+  return new Set((String(value || '').toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter((word) => !ignoredMatchWords.has(word)));
+}
+function tokenOverlap(leftText, rightText) {
+  const left = itemTokens(leftText);
+  const right = itemTokens(rightText);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return shared / Math.min(left.size, right.size);
+}
+function compareListings(lost, found) {
+  const sameCategory = String(lost.category).toLowerCase() === String(found.category).toLowerCase();
+  const titleOverlap = tokenOverlap(lost.title, found.title);
+  const detailsOverlap = tokenOverlap(lost.details, found.details);
+  const placeOverlap = tokenOverlap(lost.place, found.place);
+  const score = Math.min(100, Math.round(
+    (sameCategory ? 35 : 0) + titleOverlap * 35 + detailsOverlap * 20 + placeOverlap * 10,
+  ));
+  if (score < 25) return null;
+  const reasons = [];
+  if (sameCategory) reasons.push('Same item category');
+  if (titleOverlap >= 0.2 || detailsOverlap >= 0.2) reasons.push('Similar item description');
+  if (placeOverlap >= 0.25) reasons.push('Similar reported location');
+  return { score, reasons };
+}
+function publicClaim(claim, viewerId) {
+  const isIncoming = String(claim.ownerId?._id || claim.ownerId) === String(viewerId);
+  const otherParty = isIncoming ? claim.claimantId : claim.ownerId;
+  return {
+    id: String(claim._id),
+    direction: isIncoming ? 'incoming' : 'outgoing',
+    status: claim.status,
+    privateDetails: claim.privateDetails,
+    listing: claim.listingId ? publicListing(claim.listingId) : null,
+    otherParty: {
+      name: otherParty?.name || 'FindIt student',
+      college: otherParty?.college || 'Campus community',
+      email: claim.status === 'accepted' ? otherParty?.email || '' : '',
+    },
+    createdAt: claim.createdAt,
+  };
+}
 async function signedInUser(req) {
   const token = getCookie(req, 'findit_session');
   if (!token) return null;
@@ -318,6 +371,112 @@ app.get('/api/listings', async (_req, res) => {
   return res.json({ listings: listings.map(publicListing) });
 });
 
+app.get('/api/auth/matches', async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const acceptedListingIds = await Claim.distinct('listingId', { status: 'accepted' });
+  const [lostListings, foundListings] = await Promise.all([
+    Listing.find({ userId: user._id, type: 'Lost', status: 'active' }).sort({ createdAt: -1 }).limit(100),
+    Listing.find({ userId: { $ne: user._id }, type: 'Found', status: 'active', _id: { $nin: acceptedListingIds } }).sort({ createdAt: -1 }).limit(300),
+  ]);
+  const matches = [];
+  for (const lost of lostListings) {
+    for (const found of foundListings) {
+      const comparison = compareListings(lost, found);
+      if (comparison) {
+        matches.push({
+          lostListing: publicListing(lost),
+          foundListing: publicListing(found),
+          score: comparison.score,
+          reasons: comparison.reasons,
+        });
+      }
+    }
+  }
+  matches.sort((left, right) => right.score - left.score);
+  return res.json({ matches: matches.slice(0, 25), hasLostReports: lostListings.length > 0 });
+});
+
+app.get('/api/auth/claims', async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const claims = await Claim.find({ $or: [{ ownerId: user._id }, { claimantId: user._id }] })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .populate('listingId')
+    .populate('claimantId', 'name college email')
+    .populate('ownerId', 'name college email');
+  return res.json({ claims: claims.map((claim) => publicClaim(claim, user._id)) });
+});
+
+app.patch('/api/auth/claims/:id', async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Claim request not found.' });
+  const { status } = req.body || {};
+  if (!['accepted', 'rejected'].includes(status)) {
+    return res.status(400).json({ message: 'Choose accept or decline for this claim.' });
+  }
+  const claim = await Claim.findOne({ _id: req.params.id, ownerId: user._id });
+  if (!claim) return res.status(404).json({ message: 'Claim request not found.' });
+  if (claim.status !== 'pending') return res.status(409).json({ message: 'This claim request has already been reviewed.' });
+  const listing = await Listing.findOne({ _id: claim.listingId, userId: user._id, type: 'Found', status: 'active' });
+  if (!listing) return res.status(409).json({ message: 'This found listing is no longer active.' });
+  claim.status = status;
+  await claim.save();
+  if (status === 'accepted') {
+    await Claim.updateMany(
+      { listingId: listing._id, _id: { $ne: claim._id }, status: 'pending' },
+      { $set: { status: 'rejected' } },
+    );
+  }
+  return res.json({
+    message: status === 'accepted'
+      ? 'Claim accepted. Arrange a safe handoff, then mark the listing returned.'
+      : 'Claim declined.',
+  });
+});
+app.post('/api/listings/:id/claims', async (req, res) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(404).json({ message: 'This item cannot receive a claim.' });
+  }
+  const privateDetails = String(req.body?.privateDetails || '').trim();
+  if (privateDetails.length < 12 || privateDetails.length > 1000) {
+    return res.status(400).json({ message: 'Describe a private identifying detail in 12 to 1000 characters.' });
+  }
+  const listing = await Listing.findOne({ _id: req.params.id, type: 'Found', status: 'active' });
+  if (!listing) return res.status(404).json({ message: 'This found item is no longer available for claims.' });
+  if (String(listing.userId) === String(user._id)) {
+    return res.status(400).json({ message: 'You cannot claim your own found listing.' });
+  }
+  if (await Claim.exists({ listingId: listing._id, status: 'accepted' })) {
+    return res.status(409).json({ message: 'This item already has an accepted claim.' });
+  }
+  const existing = await Claim.findOne({ listingId: listing._id, claimantId: user._id });
+  if (existing && existing.status !== 'rejected') {
+    return res.status(409).json({ message: 'You already have a claim request for this item.' });
+  }
+  try {
+    if (existing) {
+      existing.privateDetails = privateDetails;
+      existing.status = 'pending';
+      await existing.save();
+    } else {
+      await Claim.create({
+        listingId: listing._id,
+        claimantId: user._id,
+        ownerId: listing.userId,
+        privateDetails,
+      });
+    }
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: 'You already have a claim request for this item.' });
+    throw error;
+  }
+  return res.status(201).json({ message: 'Your private claim was sent to the person who reported this item.' });
+});
 app.get('/api/listings/:id/contact', async (req, res) => {
   const user = await requireUser(req, res);
   if (!user) return;

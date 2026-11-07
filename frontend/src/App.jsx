@@ -11,12 +11,13 @@ import authApi from "./api/auth.js";
 import ListingCard from "./components/ListingCard.jsx";
 import ReportModal from "./components/ReportModal.jsx";
 import ItemDetailModal from "./components/ItemDetailModal.jsx";
-import initialItems, { categories } from "./data/listings.js";
+import ClaimsHub from "./components/ClaimsHub.jsx";
+import { categories } from "./data/listings.js";
 import "./App.css";
 import "./components/auth.css";
 
 function App() {
-  const [items, setItems] = useState(initialItems);
+  const [items, setItems] = useState([]);
   const [kind, setKind] = useState("All");
   const [category, setCategory] = useState("All items");
   const [query, setQuery] = useState("");
@@ -32,6 +33,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [emailForLogin, setEmailForLogin] = useState("");
   const [showProfile, setShowProfile] = useState(false);
+  const [showClaimsHub, setShowClaimsHub] = useState(false);
 
   useEffect(() => {
     if (resetToken) return;
@@ -44,7 +46,7 @@ function App() {
 
   useEffect(() => {
     listingsApi.all().then((savedListings) => {
-      setItems([...savedListings, ...initialItems]);
+      setItems(savedListings);
     }).catch(() => {});
   }, []);
   const normalizedQuery = query.trim().toLowerCase();
@@ -183,7 +185,7 @@ function App() {
   }
 
   if (page === "admin" && currentUser?.role === "admin") {
-    return <AdminDashboard user={currentUser} onBack={() => { listingsApi.all().then((savedListings) => setItems([...savedListings, ...initialItems])).catch(() => {}); setPage("home"); }} />;
+    return <AdminDashboard user={currentUser} onBack={() => { listingsApi.all().then((savedListings) => setItems(savedListings)).catch(() => {}); setPage("home"); }} />;
   }
 
   if (page === "admin") {
@@ -219,7 +221,11 @@ function App() {
           <a href="#safety" onClick={() => setMobileMenu(false)}>
             Safety
           </a>
-          {currentUser?.role === "admin" && (
+          {currentUser && (
+            <button className="button button-quiet nav-login" onClick={() => { setShowClaimsHub(true); setMobileMenu(false); }}>
+              Matches &amp; claims
+            </button>
+          )}          {currentUser?.role === "admin" && (
             <button className="button button-quiet nav-login" onClick={() => setPage("admin")}>
               Admin desk
             </button>
@@ -268,13 +274,8 @@ function App() {
               </button>
             </div>
             <div className="trust-row">
-              <div className="avatar-stack">
-                <span>R</span>
-                <span>M</span>
-                <span>A</span>
-                <span>+</span>
-              </div>
               <span>Small acts. Big reunions.</span>
+
               <span className="trust-divider" />
               <span className="trust-icon">
                 <Icon name="shield" size={15} />
@@ -291,7 +292,7 @@ function App() {
               <span className="note-icon">🔍</span>
               <span>
                 <b>Found nearby</b>
-                <small>Someone just posted</small>
+                <small>Good finds start here</small>
               </span>
               <i>✓</i>
             </div>
@@ -528,7 +529,7 @@ function App() {
                 ································→
               </div>
               <Step number="02" icon="💬" title="Make a connection">
-                Spot a match? Confirm a few details directly with the person.
+                Compare item details and send a private ownership claim to the reporter.
               </Step>
               <div className="step-connector">
                 ································→
@@ -630,6 +631,7 @@ function App() {
           item={modal.item}
           onClose={() => setModal(null)}
           onContact={() => listingsApi.contact(modal.item.id)}
+          onSubmitClaim={(privateDetails) => listingsApi.createClaim(modal.item.id, privateDetails)}
         />
       )}
       {showProfile && currentUser && (
@@ -654,6 +656,15 @@ function App() {
           onChangePassword={(currentPassword, newPassword) =>
             authApi.changePassword({ currentPassword, newPassword })
           }
+        />
+      )}
+      {showClaimsHub && currentUser && (
+        <ClaimsHub
+          onClose={() => setShowClaimsHub(false)}
+          onOpenListing={(item) => {
+            setShowClaimsHub(false);
+            setModal({ type: "detail", item });
+          }}
         />
       )}
       {toast && <Toast message={toast} />}
