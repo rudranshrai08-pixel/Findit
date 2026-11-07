@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://findit-api.onrender.com/api/:path*"
+      "destination": "https://findit-api-i72y.onrender.com/api/:path*"
     }
   ]
 }
