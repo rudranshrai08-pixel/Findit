@@ -2,6 +2,8 @@
 
 FindIt is a MERN application for students to report lost or found belongings, browse campus reports, and privately verify ownership before arranging a handoff.
 
+**Live demo:** [Open FindIt](https://findit-delta-cyan.vercel.app/)
+
 ## Working project location
 
 The verified development copy is C:\Projects\FindIt. Open this folder in VS Code when running or editing the updated project. The separate OneDrive Desktop copy is preserved and does not contain the latest module changes.
